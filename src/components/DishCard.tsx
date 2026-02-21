@@ -1,8 +1,8 @@
 import Link from "next/link";
-import type { Dish } from "@/types";
+import type { StoredDish } from "@/types";
 import FlavorTags from "./FlavorTags";
 
-export default function DishCard({ dish }: { dish: Dish }) {
+export default function DishCard({ dish }: { dish: StoredDish }) {
   return (
     <Link
       href={`/dish/${dish.id}`}

@@ -1,22 +1,33 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import Link from "next/link";
-import { getServiceSupabase } from "@/lib/supabase";
-import type { Dish, Restaurant, Menu } from "@/types";
+import type { StoredMenu } from "@/types";
+import { getMenu } from "@/lib/storage";
 import DishCard from "@/components/DishCard";
 
-export const dynamic = "force-dynamic";
+export default function ResultsPage() {
+  const { menuId } = useParams<{ menuId: string }>();
+  const [menu, setMenu] = useState<StoredMenu | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
-export default async function ResultsPage({
-  params,
-}: {
-  params: { menuId: string };
-}) {
-  const supabase = getServiceSupabase();
+  useEffect(() => {
+    setMenu(getMenu(menuId));
+    setLoaded(true);
+  }, [menuId]);
 
-  const { data: menu } = await supabase
-    .from("menus")
-    .select("*")
-    .eq("id", params.menuId)
-    .single<Menu>();
+  if (!loaded) {
+    return (
+      <div className="flex flex-col gap-4 animate-pulse">
+        <div className="h-8 bg-gray-200 rounded w-3/4" />
+        <div className="h-4 bg-gray-200 rounded w-1/2" />
+        <div className="h-20 bg-gray-200 rounded-xl" />
+        <div className="h-20 bg-gray-200 rounded-xl" />
+        <div className="h-20 bg-gray-200 rounded-xl" />
+      </div>
+    );
+  }
 
   if (!menu) {
     return (
@@ -29,38 +40,25 @@ export default async function ResultsPage({
     );
   }
 
-  const { data: restaurant } = await supabase
-    .from("restaurants")
-    .select("*")
-    .eq("id", menu.restaurant_id)
-    .single<Restaurant>();
-
-  const { data: dishes } = await supabase
-    .from("dishes")
-    .select("*")
-    .eq("menu_id", params.menuId)
-    .order("created_at", { ascending: true })
-    .returns<Dish[]>();
-
   return (
     <div className="flex flex-col gap-4">
       <div>
-        {restaurant?.name && (
+        {menu.restaurant_name && (
           <h1 className="text-2xl font-bold text-gray-900">
-            {restaurant.name}
+            {menu.restaurant_name}
           </h1>
         )}
-        {restaurant?.cuisine_type && (
-          <p className="text-sm text-gray-500">{restaurant.cuisine_type} cuisine</p>
+        {menu.cuisine_type && (
+          <p className="text-sm text-gray-500">{menu.cuisine_type} cuisine</p>
         )}
         <p className="text-sm text-gray-400 mt-1">
-          {dishes?.length || 0} dishes found
+          {menu.dishes.length} dishes found
         </p>
       </div>
 
-      {dishes && dishes.length > 0 ? (
+      {menu.dishes.length > 0 ? (
         <div className="flex flex-col gap-3">
-          {dishes.map((dish) => (
+          {menu.dishes.map((dish) => (
             <DishCard key={dish.id} dish={dish} />
           ))}
         </div>

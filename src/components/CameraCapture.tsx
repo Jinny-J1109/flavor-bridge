@@ -2,6 +2,7 @@
 
 import { useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { buildMenuFromScanResult, saveMenu } from "@/lib/storage";
 
 export default function CameraCapture() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -59,8 +60,10 @@ export default function CameraCapture() {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || "Scan failed");
       }
-      const { menuId } = await res.json();
-      router.push(`/results/${menuId}`);
+      const scanResult = await res.json();
+      const menu = buildMenuFromScanResult(scanResult);
+      saveMenu(menu);
+      router.push(`/results/${menu.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong");
       setLoading(false);

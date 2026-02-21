@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import type { Dish } from "@/types";
+import type { StoredDish } from "@/types";
+import { getDish, findCachedDetails, updateDish } from "@/lib/storage";
 import FlavorTags from "@/components/FlavorTags";
 import FlavorRadar from "@/components/FlavorRadar";
 import PronunciationPlayer from "@/components/PronunciationPlayer";
@@ -11,19 +12,75 @@ import DishImage from "@/components/DishImage";
 
 export default function DishDetailPage() {
   const { dishId } = useParams<{ dishId: string }>();
-  const [dish, setDish] = useState<Dish | null>(null);
+  const [dish, setDish] = useState<StoredDish | null>(null);
+  const [cuisineType, setCuisineType] = useState<string>("unknown");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadDish() {
+      const result = getDish(dishId);
+      if (!result) {
+        setError("Dish not found");
+        setLoading(false);
+        return;
+      }
+
+      const { dish: storedDish, menu } = result;
+      setCuisineType(menu.cuisine_type || "unknown");
+
+      if (storedDish.details_generated) {
+        setDish(storedDish);
+        setLoading(false);
+        return;
+      }
+
+      // Check localStorage cache for same dish name
+      const cached = findCachedDetails(storedDish.name_original);
+      if (cached) {
+        const updates: Partial<StoredDish> = {
+          description: cached.description,
+          tastes_like: cached.tastes_like,
+          tastes_like_components: cached.tastes_like_components,
+          flavor_profile: cached.flavor_profile,
+          ingredients: cached.ingredients,
+          how_to_eat: cached.how_to_eat,
+          pronunciation: cached.pronunciation || storedDish.pronunciation,
+          details_generated: true,
+        };
+        updateDish(dishId, updates);
+        setDish({ ...storedDish, ...updates });
+        setLoading(false);
+        return;
+      }
+
+      // Fetch details from API
       try {
-        const res = await fetch(`/api/dish/${dishId}`);
-        if (!res.ok) throw new Error("Failed to load dish");
-        const data = await res.json();
-        setDish(data.dish);
+        const res = await fetch("/api/dish/details", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name_original: storedDish.name_original,
+            cuisine_type: menu.cuisine_type || "unknown",
+          }),
+        });
+        if (!res.ok) throw new Error("Failed to load dish details");
+        const details = await res.json();
+        const updates: Partial<StoredDish> = {
+          description: details.description,
+          tastes_like: details.tastes_like,
+          tastes_like_components: details.tastes_like_components,
+          flavor_profile: details.flavor_profile,
+          ingredients: details.ingredients,
+          how_to_eat: details.how_to_eat,
+          pronunciation: details.pronunciation || storedDish.pronunciation,
+          details_generated: true,
+        };
+        updateDish(dishId, updates);
+        setDish({ ...storedDish, ...updates });
       } catch {
         setError("Could not load dish details. Please try again.");
+        setDish(storedDish);
       } finally {
         setLoading(false);
       }
@@ -87,7 +144,7 @@ export default function DishDetailPage() {
       </div>
 
       {/* AI Image */}
-      <DishImage dish={dish} />
+      <DishImage dish={dish} cuisineType={cuisineType} />
 
       {/* Flavor Tags */}
       {dish.flavor_tags && dish.flavor_tags.length > 0 && (

@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
-import type { Dish } from "@/types";
+import type { StoredDish } from "@/types";
+import { findCachedImage, updateDish } from "@/lib/storage";
 
 const DAILY_CAP = 20;
 const CAP_KEY = "flavor-bridge-image-cap";
@@ -25,14 +26,29 @@ function incrementImageCount() {
   localStorage.setItem(CAP_KEY, JSON.stringify(current));
 }
 
-export default function DishImage({ dish }: { dish: Dish }) {
+export default function DishImage({
+  dish,
+  cuisineType,
+}: {
+  dish: StoredDish;
+  cuisineType: string;
+}) {
   const [imageUrl, setImageUrl] = useState<string | null>(dish.image_url);
   const [loading, setLoading] = useState(!dish.image_url);
   const [error, setError] = useState<string | null>(null);
-  const [flagged, setFlagged] = useState(false);
+  const [flagged, setFlagged] = useState(dish.flagged);
 
   useEffect(() => {
     if (dish.image_url) return;
+
+    // Check localStorage cache for same dish name
+    const cached = findCachedImage(dish.name_original);
+    if (cached) {
+      setImageUrl(cached);
+      updateDish(dish.id, { image_url: cached });
+      setLoading(false);
+      return;
+    }
 
     const cap = getImageCount();
     if (cap.count >= DAILY_CAP) {
@@ -43,13 +59,22 @@ export default function DishImage({ dish }: { dish: Dish }) {
 
     async function loadImage() {
       try {
-        const res = await fetch(`/api/image/${dish.id}`, { method: "POST" });
+        const res = await fetch("/api/image/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name_original: dish.name_original,
+            description: dish.description || dish.name_english || dish.name_original,
+            cuisine_type: cuisineType,
+          }),
+        });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           throw new Error(data.error || "Failed to generate image");
         }
         const data = await res.json();
         setImageUrl(data.image_url);
+        updateDish(dish.id, { image_url: data.image_url });
         incrementImageCount();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Image unavailable");
@@ -58,11 +83,11 @@ export default function DishImage({ dish }: { dish: Dish }) {
       }
     }
     loadImage();
-  }, [dish.id, dish.image_url]);
+  }, [dish.id, dish.image_url, dish.name_original, dish.description, dish.name_english, cuisineType]);
 
-  async function handleFlag() {
+  function handleFlag() {
     setFlagged(true);
-    await fetch(`/api/image/${dish.id}`, { method: "PATCH" });
+    updateDish(dish.id, { flagged: true });
   }
 
   if (loading) {
@@ -90,6 +115,7 @@ export default function DishImage({ dish }: { dish: Dish }) {
           fill
           className="object-cover"
           sizes="(max-width: 512px) 100vw, 512px"
+          unoptimized
         />
       </div>
       {!flagged ? (
